@@ -1,10 +1,21 @@
 from rest_framework.viewsets import ModelViewSet
-from con_list.serializers import ContactSerializer
-from con_list.models import Contact
+from .models import Contact
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth import logout
 from django.contrib.auth import authenticate, login
 from .forms import ContactForm, UserForm
+from django.http import HttpResponse, JsonResponse
+#from rest_framework.renderers import JSONRenderer
+from rest_framework.parsers import JSONParser
+from .serializers import ContactSerializer, UserSerializer
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, permission_classes
+#from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from rest_framework.permissions import IsAuthenticated
+#from rest_framework.response import Response
+#from rest_framework.views import APIView
+
+
 
 
 
@@ -133,3 +144,59 @@ def favorite(request, contact_id):
 		return JsonResponse({'success': False})
 	else:
 		return render(request, 'index.html', {'contacts':contacts})
+
+
+@csrf_exempt
+def apiregisteration(request):
+    data = JSONParser().parse(request)
+    serializer = UserSerializer(data=data)
+    if serializer.is_valid():
+        serializer.save()
+        return JsonResponse(serializer.data, status=201)
+    return JsonResponse(serializer.errors, status=400)
+
+
+@permission_classes([IsAuthenticated])
+@api_view(['GET', 'POST'])
+@csrf_exempt
+def contact_list(request):
+    try:
+        contacts = Contact.objects.filter(user=request.user)
+    except Contact.DoesNotExist:
+        return HttpResponse(status=404)
+
+    if request.method == 'GET':
+        serializer = ContactSerializer(contacts, many=True)
+        return JsonResponse(serializer.data, safe=False)
+
+    elif request.method == 'POST':
+        data = JSONParser().parse(request)
+        #for data in lis:
+        serializer = ContactSerializer(data=data, many=True)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return JsonResponse(serializer.data, safe=False)
+        return JsonResponse(serializer.errors, status=400)
+
+
+
+@permission_classes([IsAuthenticated])
+@api_view(['GET', 'DELETE'])
+@csrf_exempt
+def contact_detail(request, pk):
+    try:
+        contact = Contact.objects.filter(user=request.user).get(pk=pk)
+    except Contact.DoesNotExist:
+        return HttpResponse(status=404)
+
+    if request.method == 'GET':
+        serializer = ContactSerializer(contact)
+        return JsonResponse(serializer.data)
+
+    elif request.method == 'DELETE':
+        contact.delete()
+        contacts = Contact.objects.filter(user=request.user)
+        serializer = ContactSerializer(contacts, many=True)
+        return JsonResponse(serializer.data, safe=False)
+
+
